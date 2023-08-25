@@ -6,5 +6,6 @@ package-lock.json
 
 crash-*
 crash-state.json
+timeout-*
 
 rules.js
