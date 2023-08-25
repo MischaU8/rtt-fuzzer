@@ -30,10 +30,16 @@ module.exports.fuzz = function(fuzzerInputData) {
 
     let step = 0
     while (true) {
-        let view = RULES.view(state, state.active)
+        let active = state.active
+        if (active === 'Both' || active === 'All') {
+            // If multiple players can act, we'll pick a random player to go first.
+            active = data.pickValue(RULES.roles)
+        }
+
+        let view = RULES.view(state, active)
         
         if (step > MAX_STEPS) {
-            log_crash(game_setup, state, view, step)
+            log_crash(game_setup, state, view, step, active)
             throw new MaxStepsExceededError(`Maximum step count (MAX_STEPS=${MAX_STEPS}) exceeded`)
         }
         
@@ -42,7 +48,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
         
         if (!view.actions) {
-            log_crash(game_setup, state, view, step)
+            log_crash(game_setup, state, view, step, active)
             throw new NoMoreActionsError("No actions defined")
         }
         
@@ -51,20 +57,29 @@ module.exports.fuzz = function(fuzzerInputData) {
             delete actions['undo']
         }
         
-        if (actions.length === 0) {
-            log_crash(game_setup, state, view, step)
+        // Tor: view.actions["foo"] === 0 means the "foo" action is disabled (show the button in a disabled state)
+        for (const [key, value] of Object.entries(actions)) {
+            if (value === false || value === 0) {
+                delete actions[key]
+            }
+        }
+
+        if (Object.keys(actions).length === 0) {
+            log_crash(game_setup, state, view, step, active)
             throw new NoMoreActionsError("No more actions to take (besides undo)")
         }
         let action = data.pickValue(Object.keys(actions))
         let args = actions[action]
+
+        // TODO check for NaN as any suggested action argument and raise an error on those
         if (args !== undefined && args !== null && typeof args !== "number") {
             args = data.pickValue(args)
         }
 
         try {
-            state = RULES.action(state, state.active, action, args)
+            state = RULES.action(state, active, action, args)
         } catch (e) {
-            log_crash(game_setup, state, view, step, action, args)
+            log_crash(game_setup, state, view, step, active, action, args)
             throw new RulesCrashError(e, e.stack)
         }
         step += 1
@@ -72,15 +87,15 @@ module.exports.fuzz = function(fuzzerInputData) {
 }
 
 
-function log_crash(game_setup, state, view, step, action=undefined, args=undefined) {
+function log_crash(game_setup, state, view, step, active, action=undefined, args=undefined) {
     console.log()
     // console.log("STATE", state)
     console.log("GAME", game_setup)
     console.log("VIEW", view)
     if (action !== undefined) {
-        console.log(`STEP=${step} ACTIVE=${state.active} ACTION: ${action} ` + JSON.stringify(args))
+        console.log(`STEP=${step} ACTIVE=${active} ACTION: ${action} ` + JSON.stringify(args))
     } else {
-        console.log(`STEP=${step} ACTIVE=${state.active}`)
+        console.log(`STEP=${step} ACTIVE=${active}`)
     }
     console.log("STATE dumped to 'crash-state.json'\n")
     fs.writeFileSync("crash-state.json", JSON.stringify(state))
