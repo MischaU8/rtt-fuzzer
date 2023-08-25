@@ -71,8 +71,14 @@ module.exports.fuzz = function(fuzzerInputData) {
         let action = data.pickValue(Object.keys(actions))
         let args = actions[action]
 
-        // TODO check for NaN as any suggested action argument and raise an error on those
         if (args !== undefined && args !== null && typeof args !== "number") {
+            // check for NaN as any suggested action argument and raise an error on those
+            for (const arg in args) {
+                if (isNaN(arg)) {
+                    log_crash(game_setup, state, view, step, active)
+                    throw new InvalidActionArgument(`Action '${action}' argument has NaN value`)
+                }
+            }
             args = data.pickValue(args)
         }
 
@@ -113,6 +119,13 @@ class NoMoreActionsError extends Error {
     constructor(message) {
       super(message)
       this.name = "NoMoreActionsError"
+    }
+}
+
+class InvalidActionArgument extends Error {
+    constructor(message) {
+      super(message)
+      this.name = "InvalidActionArgument"
     }
 }
 
