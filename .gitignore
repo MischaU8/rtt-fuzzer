@@ -1,0 +1,10 @@
+corpus/
+coverage/
+node_modules/
+
+package-lock.json
+
+crash-*
+crash-state.json
+
+rules.js

@@ -1,0 +1,12 @@
+{
+	"name": "rtt-fuzzer",
+	"version": "1.0.0",
+	"description": "Fuzzer for Rally The Troops! boardgame rules",
+	"scripts": {
+		"fuzz": "jazzer rtt-module --sync",
+		"dryRun": "jazzer rtt-module --sync -- -runs=100 -seed=123456789"
+	},
+	"dependencies": {
+		"@jazzer.js/core": "^1.6.1"
+	}
+}
