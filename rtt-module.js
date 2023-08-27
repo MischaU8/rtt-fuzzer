@@ -14,6 +14,10 @@ const RULES = require(RULES_JS_FILE)
 
 module.exports.fuzz = function(fuzzerInputData) {
     let data = new FuzzedDataProvider(fuzzerInputData)
+    if (data.remainingBytes < 16) {
+        // insufficient bytes to start
+        return
+    }
     let seed = data.consumeIntegralInRange(1, 2**35-31)
     let scenario = data.pickValue(RULES.scenarios)
 
@@ -30,6 +34,10 @@ module.exports.fuzz = function(fuzzerInputData) {
 
     let step = 0
     while (true) {
+        if (data.remainingBytes < 16) {
+            // insufficient bytes to continue
+            return
+        }
         let active = state.active
         if (active === 'Both' || active === 'All') {
             // If multiple players can act, we'll pick a random player to go first.
@@ -58,8 +66,9 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
         
         // Tor: view.actions["foo"] === 0 means the "foo" action is disabled (show the button in a disabled state)
+        // Also ignoring the actions with `[]` as args, unsure about this but needed for Nevsky.
         for (const [key, value] of Object.entries(actions)) {
-            if (value === false || value === 0) {
+            if (value === false || value === 0 || value.length === 0) {
                 delete actions[key]
             }
         }
