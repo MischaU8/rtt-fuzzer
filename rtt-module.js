@@ -67,7 +67,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             // remove `undo` from actions, useful to test for dead-ends
             delete actions['undo']
         }
-        if (!NO_RESIGN) {
+        if (!NO_RESIGN && RULES.resign) {
             actions['_resign'] = 1
         }
         
