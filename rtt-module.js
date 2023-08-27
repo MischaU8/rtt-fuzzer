@@ -5,6 +5,8 @@ const { FuzzedDataProvider } = require("@jazzer.js/core")
 
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
 const MAX_STEPS = parseInt(process.env.MAX_STEPS) || 2048
+const NO_UNDO = process.env.NO_UNDO === 'true'
+const NO_RESIGN = process.env.NO_RESIGN === 'true'
 
 console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}' MAX_STEPS=${MAX_STEPS}`)
 if (!fs.existsSync(RULES_JS_FILE)) {
@@ -61,8 +63,12 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
         
         let actions = view.actions
-        if ('undo' in actions) {
+        if (NO_UNDO && 'undo' in actions) {
+            // remove `undo` from actions, useful to test for dead-ends
             delete actions['undo']
+        }
+        if (!NO_RESIGN) {
+            actions['_resign'] = 1
         }
         
         // Tor: view.actions["foo"] === 0 means the "foo" action is disabled (show the button in a disabled state)
@@ -80,7 +86,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         let action = data.pickValue(Object.keys(actions))
         let args = actions[action]
 
-        if (args !== undefined && args !== null && typeof args !== "number") {
+        if (args !== undefined && args !== null && typeof args !== "number" && typeof args !== "boolean") {
             // check for NaN as any suggested action argument and raise an error on those
             for (const arg in args) {
                 if (isNaN(arg)) {
@@ -90,9 +96,13 @@ module.exports.fuzz = function(fuzzerInputData) {
             }
             args = data.pickValue(args)
         }
-
+        // console.log(action, args)
         try {
-            state = RULES.action(state, active, action, args)
+            if (action !== "_resign") {
+                state = RULES.action(state, active, action, args)
+            } else {
+                state = RULES.resign(state, active)
+            }
         } catch (e) {
             log_crash(game_setup, state, view, step, active, action, args)
             throw new RulesCrashError(e, e.stack)
