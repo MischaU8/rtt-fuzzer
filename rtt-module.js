@@ -5,6 +5,8 @@ const { FuzzedDataProvider } = require("@jazzer.js/core")
 
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
 const MAX_STEPS = parseInt(process.env.MAX_STEPS) || 2048
+const NO_UNDO = process.env.NO_UNDO === 'true'
+const NO_RESIGN = process.env.NO_RESIGN === 'true'
 
 console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}' MAX_STEPS=${MAX_STEPS}`)
 if (!fs.existsSync(RULES_JS_FILE)) {
@@ -23,8 +25,14 @@ function rnd(min, max) {
 
 module.exports.fuzz = function(fuzzerInputData) {
     let data = new FuzzedDataProvider(fuzzerInputData)
-    let seed = rnd(1, 2**35-31)
-    let scenario = pick(RULES.scenarios)
+//    let seed = rnd(1, 2**35-31)
+//    let scenario = pick(RULES.scenarios)
+    if (data.remainingBytes < 16) {
+        // insufficient bytes to start
+        return
+    }
+    let seed = data.consumeIntegralInRange(1, 2**35-31)
+    let scenario = data.pickValue(RULES.scenarios)
 
     // TODO randomize options
     const options = {}
@@ -39,6 +47,10 @@ module.exports.fuzz = function(fuzzerInputData) {
 
     let step = 0
     while (true) {
+        if (data.remainingBytes < 16) {
+            // insufficient bytes to continue
+            return
+        }
         let active = state.active
         if (active === 'Both' || active === 'All') {
             // If multiple players can act, we'll pick a random player to go first.
@@ -62,13 +74,18 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
         
         let actions = view.actions
-        if ('undo' in actions) {
+        if (NO_UNDO && 'undo' in actions) {
+            // remove `undo` from actions, useful to test for dead-ends
             delete actions['undo']
+        }
+        if (!NO_RESIGN && RULES.resign) {
+            actions['_resign'] = 1
         }
         
         // Tor: view.actions["foo"] === 0 means the "foo" action is disabled (show the button in a disabled state)
+        // Also ignoring the actions with `[]` as args, unsure about this but needed for Nevsky.
         for (const [key, value] of Object.entries(actions)) {
-            if (value === false || value === 0) {
+            if (value === false || value === 0 || value.length === 0) {
                 delete actions[key]
             }
         }
@@ -81,7 +98,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         let args = actions[action]
         let arg = null
 
-        if (args !== undefined && args !== null && typeof args !== "number") {
+        if (args !== undefined && args !== null && typeof args !== "number" && typeof args !== "boolean") {
             // check for NaN as any suggested action argument and raise an error on those
             for (const arg in args) {
                 if (isNaN(arg)) {
@@ -101,9 +118,13 @@ module.exports.fuzz = function(fuzzerInputData) {
                     "chosen_arg" : arg
                 })
         }
-
+        // console.log(action, args)
         try {
-            state = RULES.action(state, active, action, arg)
+            if (action !== "_resign") {
+                state = RULES.action(state, active, action, args)
+            } else {
+                state = RULES.resign(state, active)
+            }
         } catch (e) {
             log_crash(game_setup, state, view, step, active, action, arg)
             throw new RulesCrashError(e, e.stack)
