@@ -11,3 +11,5 @@ slow-unit-*
 timeout-*
 
 rules.js
+
+.vscode/
