@@ -16,7 +16,10 @@
             ],
             "program": "${workspaceRoot}/node_modules/@jazzer.js/core/dist/cli.js",
             "env": {
-                "RTT_RULES": "../server/public/inferno/rules.js"
+                "RTT_RULES": "../server/public/inferno/rules.js",
+                "RND": "true",
+                "NO_UNDO": "true",
+                "NO_RESIGN" : "true"
               }
         }
     ]
