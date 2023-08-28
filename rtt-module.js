@@ -7,21 +7,39 @@ const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
 const MAX_STEPS = parseInt(process.env.MAX_STEPS) || 2048
 const NO_UNDO = process.env.NO_UNDO === 'true'
 const NO_RESIGN = process.env.NO_RESIGN === 'true'
+const RND = process.env.RND === 'true'
 
 console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}' MAX_STEPS=${MAX_STEPS}`)
+console.log(`RANDOM='${RND}' NO_UNDO='${NO_UNDO}' NO_RESIGN='${NO_RESIGN}'`)
 if (!fs.existsSync(RULES_JS_FILE)) {
     throw Error("rules.js not found, specify via RTT_RULES environment variable.")
 }
 const RULES = require(RULES_JS_FILE)
 
+function pick(data, a) {
+    if (RND) {
+        let x = rnd(data, 1, a.length)
+        return a[x-1]    
+    }
+
+    return data.pickValue(a)
+}
+
+function rnd(data, min, max) {
+    if (RND) {
+        return Math.floor(Math.random() * (max - min + 1) + min)
+    }
+    return data.consumeIntegralInRange(min, max)
+}
+
 module.exports.fuzz = function(fuzzerInputData) {
     let data = new FuzzedDataProvider(fuzzerInputData)
-    if (data.remainingBytes < 16) {
+    if (!RND && data.remainingBytes < 16) {
         // insufficient bytes to start
         return
     }
-    let seed = data.consumeIntegralInRange(1, 2**35-31)
-    let scenario = data.pickValue(RULES.scenarios)
+    let seed =rnd(data, 1, 2**35-31)
+    let scenario = pick(data, RULES.scenarios)
 
     // TODO randomize options
     const options = {}
@@ -36,14 +54,14 @@ module.exports.fuzz = function(fuzzerInputData) {
 
     let step = 0
     while (true) {
-        if (data.remainingBytes < 16) {
+        if (!RND && data.remainingBytes < 16) {
             // insufficient bytes to continue
             return
         }
         let active = state.active
         if (active === 'Both' || active === 'All') {
             // If multiple players can act, we'll pick a random player to go first.
-            active = data.pickValue(RULES.roles)
+            active = pick(data, RULES.roles)
         }
 
         let view = {}
@@ -89,8 +107,9 @@ module.exports.fuzz = function(fuzzerInputData) {
             log_crash(game_setup, state, view, step, active)
             throw new NoMoreActionsError("No more actions to take (besides undo)")
         }
-        let action = data.pickValue(Object.keys(actions))
+        let action = pick(data, Object.keys(actions))
         let args = actions[action]
+        let arg = null
 
         if (args !== undefined && args !== null && typeof args !== "number" && typeof args !== "boolean") {
             // check for NaN as any suggested action argument and raise an error on those
@@ -100,17 +119,29 @@ module.exports.fuzz = function(fuzzerInputData) {
                     throw new InvalidActionArgument(`Action '${action}' argument has NaN value`)
                 }
             }
-            args = data.pickValue(args)
+
+            arg = pick(data, args)
         }
-        // console.log(action, args)
+
+
+        if (RULES.fuzz_log !== undefined)
+            RULES.fuzz_log({
+                "state": state,
+                "view": view,
+                "actions" : Object.keys(actions),
+                "chosen_action": action,
+                "args": args,
+                "chosen_arg" : arg
+            })        
+
         try {
             if (action !== "_resign") {
-                state = RULES.action(state, active, action, args)
+                state = RULES.action(state, active, action, arg)
             } else {
                 state = RULES.resign(state, active)
             }
         } catch (e) {
-            log_crash(game_setup, state, view, step, active, action, args)
+            log_crash(game_setup, state, view, step, active, action, arg)
             throw new RulesCrashError(e, e.stack)
         }
         step += 1
@@ -121,7 +152,7 @@ module.exports.fuzz = function(fuzzerInputData) {
 function log_crash(game_setup, state, view, step, active, action=undefined, args=undefined) {
     console.log()
     // console.log("STATE", state)
-    console.log("GAME", game_setup)
+    //console.log("GAME", game_setup)
     console.log("VIEW", view)
     if (action !== undefined) {
         console.log(`STEP=${step} ACTIVE=${active} ACTION: ${action} ` + JSON.stringify(args))
