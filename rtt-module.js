@@ -46,7 +46,13 @@ module.exports.fuzz = function(fuzzerInputData) {
             active = data.pickValue(RULES.roles)
         }
 
-        let view = RULES.view(state, active)
+        let view = {}
+        try {
+            view = RULES.view(state, active)
+        } catch (e) {
+            log_crash(game_setup, state, view, step, active)
+            throw new RulesCrashError(e, e.stack)
+        }
         
         if (step > MAX_STEPS) {
             log_crash(game_setup, state, view, step, active)
