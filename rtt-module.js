@@ -12,10 +12,19 @@ if (!fs.existsSync(RULES_JS_FILE)) {
 }
 const RULES = require(RULES_JS_FILE)
 
+function pick(a) {
+    let x = rnd(1, a.length) //Math.floor(Math.random() * a.length) + 1
+    return a[x-1]
+}
+
+function rnd(min, max) {
+    return Math.floor(Math.random() * (max - min + 1) + min)
+}
+
 module.exports.fuzz = function(fuzzerInputData) {
     let data = new FuzzedDataProvider(fuzzerInputData)
-    let seed = data.consumeIntegralInRange(1, 2**35-31)
-    let scenario = data.pickValue(RULES.scenarios)
+    let seed = rnd(1, 2**35-31)
+    let scenario = pick(RULES.scenarios)
 
     // TODO randomize options
     const options = {}
@@ -33,7 +42,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         let active = state.active
         if (active === 'Both' || active === 'All') {
             // If multiple players can act, we'll pick a random player to go first.
-            active = data.pickValue(RULES.roles)
+            active = pick(RULES.roles)
         }
 
         let view = RULES.view(state, active)
@@ -68,8 +77,9 @@ module.exports.fuzz = function(fuzzerInputData) {
             log_crash(game_setup, state, view, step, active)
             throw new NoMoreActionsError("No more actions to take (besides undo)")
         }
-        let action = data.pickValue(Object.keys(actions))
+        let action = pick(Object.keys(actions))
         let args = actions[action]
+        let arg = null
 
         if (args !== undefined && args !== null && typeof args !== "number") {
             // check for NaN as any suggested action argument and raise an error on those
@@ -79,13 +89,23 @@ module.exports.fuzz = function(fuzzerInputData) {
                     throw new InvalidActionArgument(`Action '${action}' argument has NaN value`)
                 }
             }
-            args = data.pickValue(args)
+            arg = pick(args)
+
+            if (RULES.fuzz_log !== undefined)
+                RULES.fuzz_log({
+                    "state": state,
+                    "view": view,
+                    "actions" : Object.keys(actions),
+                    "chosen_action": action,
+                    "args": args,
+                    "chosen_arg" : arg
+                })
         }
 
         try {
-            state = RULES.action(state, active, action, args)
+            state = RULES.action(state, active, action, arg)
         } catch (e) {
-            log_crash(game_setup, state, view, step, active, action, args)
+            log_crash(game_setup, state, view, step, active, action, arg)
             throw new RulesCrashError(e, e.stack)
         }
         step += 1
@@ -96,8 +116,8 @@ module.exports.fuzz = function(fuzzerInputData) {
 function log_crash(game_setup, state, view, step, active, action=undefined, args=undefined) {
     console.log()
     // console.log("STATE", state)
-    console.log("GAME", game_setup)
-    console.log("VIEW", view)
+    //console.log("GAME", game_setup)
+    //console.log("VIEW", view)
     if (action !== undefined) {
         console.log(`STEP=${step} ACTIVE=${active} ACTION: ${action} ` + JSON.stringify(args))
     } else {

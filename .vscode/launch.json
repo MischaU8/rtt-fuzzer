@@ -1,0 +1,23 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Fuzz Inferno",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "args": [
+                "rtt-module"
+            ],
+            "program": "${workspaceRoot}/node_modules/@jazzer.js/core/dist/cli.js",
+            "env": {
+                "RTT_RULES": "../server/public/inferno/rules.js"
+              }
+        }
+    ]
+}
