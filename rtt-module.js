@@ -36,7 +36,7 @@ module.exports.fuzz = function(fuzzerInputData) {
     let data = new FuzzedDataProvider(fuzzerInputData)
     if (!RND && data.remainingBytes < 16) {
         // insufficient bytes to start
-        return
+        return -1
     }
     let seed =rnd(data, 1, 2**35-31)
     let scenario = pick(data, RULES.scenarios)
@@ -56,7 +56,7 @@ module.exports.fuzz = function(fuzzerInputData) {
     while (true) {
         if (!RND && data.remainingBytes < 16) {
             // insufficient bytes to continue
-            return
+            return -1
         }
         let active = state.active
         if (active === 'Both' || active === 'All') {
