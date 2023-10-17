@@ -1,7 +1,7 @@
 "use strict"
 
 const Ajv = require("ajv")
-const ajv = new Ajv()
+const ajv = new Ajv({allowUnionTypes: true})
 const fs = require("fs")
 const { FuzzedDataProvider } = require("@jazzer.js/core")
 
