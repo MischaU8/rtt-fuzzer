@@ -1,5 +1,7 @@
 "use strict"
 
+const Ajv = require("ajv")
+const ajv = new Ajv()
 const fs = require("fs")
 const { FuzzedDataProvider } = require("@jazzer.js/core")
 
@@ -13,6 +15,12 @@ if (!fs.existsSync(RULES_JS_FILE)) {
     throw Error("rules.js not found, specify via RTT_RULES environment variable.")
 }
 const RULES = require(RULES_JS_FILE)
+
+let rules_view_schema = null
+if (RULES.VIEW_SCHEMA) {
+    console.log("View schema found; validating.")
+    rules_view_schema = ajv.compile(RULES.VIEW_SCHEMA)
+}
 
 module.exports.fuzz = function(fuzzerInputData) {
     let data = new FuzzedDataProvider(fuzzerInputData)
@@ -52,6 +60,14 @@ module.exports.fuzz = function(fuzzerInputData) {
         } catch (e) {
             log_crash(game_setup, state, view, step, active)
             throw new RulesCrashError(e, e.stack)
+        }
+
+        if (rules_view_schema) {
+            if (!rules_view_schema(view)) {
+                log_crash(game_setup, state, view, step, active)
+                console.log(rules_view_schema.errors)
+                throw new SchemaValidationError("View data fails schema validation")
+            }
         }
         
         if (step > MAX_STEPS) {
@@ -102,7 +118,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             }
             args = data.pickValue(args)
         }
-        // console.log(action, args)
+        // console.log(active, action, args)
         try {
             if (action !== "_resign") {
                 state = RULES.action(state, active, action, args)
@@ -159,5 +175,12 @@ class RulesCrashError extends Error {
       super(message)
       this.name = "RulesCrashError";
       this.stack = stack
+    }
+}
+
+class SchemaValidationError extends Error {
+    constructor(message) {
+      super(message)
+      this.name = "SchemaValidationError"
     }
 }
