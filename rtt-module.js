@@ -78,6 +78,11 @@ module.exports.fuzz = function(fuzzerInputData) {
         if (state.state === 'game_over') {
             break
         }
+
+        if (view.prompt && view.prompt.startsWith("Unknown state:")) {
+            log_crash(game_setup, state, view, step, active)
+            throw new UnknownStateError(view.prompt)
+        }
         
         if (!view.actions) {
             log_crash(game_setup, state, view, step, active)
@@ -153,6 +158,13 @@ class MaxStepsExceededError extends Error {
     constructor(message) {
       super(message)
       this.name = "MaxStepsExceededError"
+    }
+}
+
+class UnknownStateError extends Error {
+    constructor(message) {
+      super(message)
+      this.name = "UnknownStateError"
     }
 }
 
