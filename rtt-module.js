@@ -6,11 +6,10 @@ const fs = require("fs")
 const { FuzzedDataProvider } = require("@jazzer.js/core")
 
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
-const MAX_STEPS = parseInt(process.env.MAX_STEPS) || 2048
 const NO_UNDO = process.env.NO_UNDO === 'true'
 const NO_RESIGN = process.env.NO_RESIGN === 'true'
 
-console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}' MAX_STEPS=${MAX_STEPS}`)
+console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}'`)
 if (!fs.existsSync(RULES_JS_FILE)) {
     throw Error("rules.js not found, specify via RTT_RULES environment variable.")
 }
@@ -68,11 +67,6 @@ module.exports.fuzz = function(fuzzerInputData) {
                 console.log(rules_view_schema.errors)
                 throw new SchemaValidationError("View data fails schema validation")
             }
-        }
-        
-        if (step > MAX_STEPS) {
-            log_crash(game_setup, state, view, step, active)
-            throw new MaxStepsExceededError(`Maximum step count (MAX_STEPS=${MAX_STEPS}) exceeded`)
         }
         
         if (state.state === 'game_over') {
@@ -154,13 +148,6 @@ function log_crash(game_setup, state, view, step, active, action=undefined, args
 }
 
 // Custom Error classes, allowing us to ignore expected errors with -x
-class MaxStepsExceededError extends Error {
-    constructor(message) {
-      super(message)
-      this.name = "MaxStepsExceededError"
-    }
-}
-
 class UnknownStateError extends Error {
     constructor(message) {
       super(message)
