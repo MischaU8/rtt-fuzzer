@@ -32,7 +32,7 @@ module.exports.fuzz = function(fuzzerInputData) {
 
     // TODO randomize options
     const options = {}
-    
+
     let game_setup = {
         "seed": seed,
         "scenario": scenario,
@@ -68,7 +68,7 @@ module.exports.fuzz = function(fuzzerInputData) {
                 throw new SchemaValidationError("View data fails schema validation")
             }
         }
-        
+
         if (state.state === 'game_over') {
             break
         }
@@ -77,12 +77,12 @@ module.exports.fuzz = function(fuzzerInputData) {
             log_crash(game_setup, state, view, step, active)
             throw new UnknownStateError(view.prompt)
         }
-        
+
         if (!view.actions) {
             log_crash(game_setup, state, view, step, active)
             throw new NoMoreActionsError("No actions defined")
         }
-        
+
         let actions = view.actions
         if (NO_UNDO && 'undo' in actions) {
             // remove `undo` from actions, useful to test for dead-ends
@@ -91,7 +91,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         if (!NO_RESIGN && RULES.resign) {
             actions['_resign'] = 1
         }
-        
+
         // Tor: view.actions["foo"] === 0 means the "foo" action is disabled (show the button in a disabled state)
         // Also ignoring the actions with `[]` as args, unsure about this but needed for Nevsky.
         for (const [key, value] of Object.entries(actions)) {
