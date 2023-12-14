@@ -8,6 +8,7 @@ const { FuzzedDataProvider } = require("@jazzer.js/core")
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
 const NO_UNDO = process.env.NO_UNDO === 'true'
 const NO_RESIGN = process.env.NO_RESIGN === 'true'
+const NO_SCHEMA = process.env.NO_SCHEMA === 'true'
 
 console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}'`)
 if (!fs.existsSync(RULES_JS_FILE)) {
@@ -16,7 +17,7 @@ if (!fs.existsSync(RULES_JS_FILE)) {
 const RULES = require(RULES_JS_FILE)
 
 let rules_view_schema = null
-if (RULES.VIEW_SCHEMA) {
+if (!NO_SCHEMA && RULES.VIEW_SCHEMA) {
     console.log("View schema found; validating.")
     rules_view_schema = ajv.compile(RULES.VIEW_SCHEMA)
 }
@@ -61,12 +62,10 @@ module.exports.fuzz = function(fuzzerInputData) {
             throw new RulesCrashError(e, e.stack)
         }
 
-        if (rules_view_schema) {
-            if (!rules_view_schema(view)) {
-                log_crash(game_setup, state, view, step, active)
-                console.log(rules_view_schema.errors)
-                throw new SchemaValidationError("View data fails schema validation")
-            }
+        if (rules_view_schema && !rules_view_schema(view)) {
+            log_crash(game_setup, state, view, step, active)
+            console.log(rules_view_schema.errors)
+            throw new SchemaValidationError("View data fails schema validation")
         }
 
         if (state.state === 'game_over') {
