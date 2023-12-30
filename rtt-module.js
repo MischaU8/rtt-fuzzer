@@ -7,7 +7,6 @@ const { FuzzedDataProvider } = require("@jazzer.js/core")
 
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
 const NO_UNDO = process.env.NO_UNDO === 'true'
-const NO_RESIGN = process.env.NO_RESIGN === 'true'
 const NO_SCHEMA = process.env.NO_SCHEMA === 'true'
 
 console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}'`)
@@ -87,9 +86,6 @@ module.exports.fuzz = function(fuzzerInputData) {
             // remove `undo` from actions, useful to test for dead-ends
             delete actions['undo']
         }
-        if (!NO_RESIGN && RULES.resign) {
-            actions['_resign'] = 1
-        }
 
         // Tor: view.actions["foo"] === 0 means the "foo" action is disabled (show the button in a disabled state)
         // Also ignoring the actions with `[]` as args, unsure about this but needed for Nevsky.
@@ -118,11 +114,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
         // console.log(active, action, args)
         try {
-            if (action !== "_resign") {
-                state = RULES.action(state, active, action, args)
-            } else {
-                state = RULES.resign(state, active)
-            }
+            state = RULES.action(state, active, action, args)
         } catch (e) {
             log_crash(game_setup, state, view, step, active, action, args)
             throw new RulesCrashError(e, e.stack)
