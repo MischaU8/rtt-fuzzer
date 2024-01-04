@@ -28,7 +28,8 @@ module.exports.fuzz = function(fuzzerInputData) {
         return
     }
     let seed = data.consumeIntegralInRange(1, 2**35-31)
-    let scenario = data.pickValue(RULES.scenarios)
+    let scenarios = Array.isArray(RULES.scenarios) ? RULES.scenarios : Object.values(RULES.scenarios).flat()
+    let scenario = data.pickValue(scenarios)
 
     // TODO randomize options
     const options = {}
