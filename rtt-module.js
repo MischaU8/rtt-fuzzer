@@ -8,6 +8,7 @@ const { FuzzedDataProvider } = require("@jazzer.js/core")
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
 const NO_UNDO = process.env.NO_UNDO === 'true'
 const NO_SCHEMA = process.env.NO_SCHEMA === 'true'
+const MAX_STEPS = parseInt(process.env.MAX_STEPS || 0)
 
 console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}'`)
 if (!fs.existsSync(RULES_JS_FILE)) {
@@ -48,6 +49,12 @@ module.exports.fuzz = function(fuzzerInputData) {
             // insufficient bytes to continue
             return
         }
+
+        if (MAX_STEPS < 0 && step > -MAX_STEPS) {
+            // Skip & ignore if we reach the limit
+            return
+        }
+
         let active = state.active
         if (active === 'Both' || active === 'All') {
             // If multiple players can act, we'll pick a random player to go first.
@@ -60,6 +67,11 @@ module.exports.fuzz = function(fuzzerInputData) {
         } catch (e) {
             log_crash(game_setup, state, view, step, active)
             throw new RulesCrashError(e, e.stack)
+        }
+
+        if (MAX_STEPS > 0 && step > MAX_STEPS) {
+            log_crash(game_setup, state, view, step, active)
+            throw new MaxStepError("MAX_STEPS reached")
         }
 
         if (rules_view_schema && !rules_view_schema(view)) {
@@ -100,6 +112,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             log_crash(game_setup, state, view, step, active)
             throw new NoMoreActionsError("No more actions to take (besides undo)")
         }
+
         let action = data.pickValue(Object.keys(actions))
         let args = actions[action]
 
@@ -144,6 +157,13 @@ class UnknownStateError extends Error {
     constructor(message) {
       super(message)
       this.name = "UnknownStateError"
+    }
+}
+
+class MaxStepError extends Error {
+    constructor(message) {
+      super(message)
+      this.name = "MaxStepError"
     }
 }
 

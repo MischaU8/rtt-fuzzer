@@ -9,7 +9,7 @@ It uses [Jazzer.js](https://github.com/CodeIntelligenceTesting/jazzer.js/) as a 
 Fuzzing or fuzz testing is an automated software testing technique that involves providing invalid, unexpected, or random data as inputs to a computer program. With rtt-fuzzer you can test the rules for any RTT module. It will play random moves and check for unexpected errors.
 
 Currently rtt-fuzzer can detect the following errors:
-* A game taking an excessive number of steps, this could indicate infinite loops and other logical flaws in the rules. By default it will accept up to 2048 action steps, but that is configurable via the `MAX_STEPS` environment variable.
+* A game taking an excessive number of steps, this could indicate infinite loops and other logical flaws in the rules. This is configurable via the `MAX_STEPS` environment variable, set it to a positive value to crash and to a negative value to skip & ignore.
 * Dead-end game states where no other actions are available (besides `undo`).
 * Any crashes of the rules.js module
 
