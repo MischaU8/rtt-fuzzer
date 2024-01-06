@@ -37,12 +37,13 @@ module.exports.fuzz = function(fuzzerInputData) {
     // TODO randomize options
     const options = {}
 
-    let game_setup = {
-        "seed": seed,
-        "scenario": scenario,
-        "options": options
-    }
-    // console.log(game_setup)
+    let replay = []
+    let game_setup = [
+        seed,
+        scenario,
+        options
+    ]
+    replay.push("\t.setup\t" + JSON.stringify(game_setup))
     let state = RULES.setup(seed, scenario, options)
 
     let step = 0
@@ -67,17 +68,17 @@ module.exports.fuzz = function(fuzzerInputData) {
         try {
             view = RULES.view(state, active)
         } catch (e) {
-            log_crash(game_setup, state, view, step, active)
+            log_crash(replay, state, view, step, active)
             throw new RulesCrashError(e, e.stack)
         }
 
         if (MAX_STEPS > 0 && step > MAX_STEPS) {
-            log_crash(game_setup, state, view, step, active)
+            log_crash(replay, state, view, step, active)
             throw new MaxStepError("MAX_STEPS reached")
         }
 
         if (rules_view_schema && !rules_view_schema(view)) {
-            log_crash(game_setup, state, view, step, active)
+            log_crash(replay, state, view, step, active)
             console.log(rules_view_schema.errors)
             throw new SchemaValidationError("View data fails schema validation")
         }
@@ -87,12 +88,12 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (view.prompt && view.prompt.startsWith("Unknown state:")) {
-            log_crash(game_setup, state, view, step, active)
+            log_crash(replay, state, view, step, active)
             throw new UnknownStateError(view.prompt)
         }
 
         if (!view.actions) {
-            log_crash(game_setup, state, view, step, active)
+            log_crash(replay, state, view, step, active)
             throw new NoMoreActionsError("No actions defined")
         }
 
@@ -111,7 +112,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (Object.keys(actions).length === 0) {
-            log_crash(game_setup, state, view, step, active)
+            log_crash(replay, state, view, step, active)
             throw new NoMoreActionsError("No more actions to take (besides undo)")
         }
 
@@ -122,22 +123,23 @@ module.exports.fuzz = function(fuzzerInputData) {
             // check for NaN as any suggested action argument and raise an error on those
             for (const arg in args) {
                 if (isNaN(arg)) {
-                    log_crash(game_setup, state, view, step, active)
+                    log_crash(replay, state, view, step, active)
                     throw new InvalidActionArgument(`Action '${action}' argument has NaN value`)
                 }
             }
             args = data.pickValue(args)
         }
         // console.log(active, action, args)
+        replay.push(active + "\t" + action + "\t" + JSON.stringify(args))
         try {
-            state = RULES.action(state, active, action, args)
+            state = RULES.action(state, active, action, JSON.stringify(args))
         } catch (e) {
-            log_crash(game_setup, state, view, step, active, action, args)
+            log_crash(replay, state, view, step, active, action, args)
             throw new RulesCrashError(e, e.stack)
         }
 
         if (action === "undo" && state.active !== active) {
-            log_crash(game_setup, state, view, step, active)
+            log_crash(replay, state, view, step, active)
             throw new UndoActiveError(`undo caused active to switch from ${active} to ${state.active}`)
         }
         step += 1
@@ -145,18 +147,19 @@ module.exports.fuzz = function(fuzzerInputData) {
 }
 
 
-function log_crash(game_setup, state, view, step, active, action=undefined, args=undefined) {
+function log_crash(replay, state, view, step, active, action=undefined, args=undefined) {
     console.log()
     // console.log("STATE", state)
-    console.log("GAME", game_setup)
     console.log("VIEW", view)
+    console.log("SETUP", replay[0].split("\t")[2])
     if (action !== undefined) {
         console.log(`STEP=${step} ACTIVE=${active} ACTION: ${action} ` + JSON.stringify(args))
     } else {
         console.log(`STEP=${step} ACTIVE=${active}`)
     }
-    console.log("STATE dumped to 'crash-state.json'\n")
+    // console.log("STATE & REPLAY dumped to 'crash-state.json' and 'crash-replay.txt'")
     fs.writeFileSync("crash-state.json", JSON.stringify(state))
+    fs.writeFileSync("crash-replay.tsv", replay.join("\n") + "\n")
 }
 
 // Custom Error classes, allowing us to ignore expected errors with -x
