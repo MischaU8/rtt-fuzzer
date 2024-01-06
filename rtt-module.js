@@ -31,6 +31,8 @@ module.exports.fuzz = function(fuzzerInputData) {
     let seed = data.consumeIntegralInRange(1, 2**35-31)
     let scenarios = Array.isArray(RULES.scenarios) ? RULES.scenarios : Object.values(RULES.scenarios).flat()
     let scenario = data.pickValue(scenarios)
+    // if (scenario.startsWith("Random"))
+    //     return
 
     // TODO randomize options
     const options = {}
@@ -133,6 +135,11 @@ module.exports.fuzz = function(fuzzerInputData) {
             log_crash(game_setup, state, view, step, active, action, args)
             throw new RulesCrashError(e, e.stack)
         }
+
+        if (action === "undo" && state.active !== active) {
+            log_crash(game_setup, state, view, step, active)
+            throw new UndoActiveError(`undo caused active to switch from ${active} to ${state.active}`)
+        }
         step += 1
     }
 }
@@ -178,6 +185,13 @@ class InvalidActionArgument extends Error {
     constructor(message) {
       super(message)
       this.name = "InvalidActionArgument"
+    }
+}
+
+class UndoActiveError extends Error {
+    constructor(message) {
+      super(message)
+      this.name = "UndoActiveError"
     }
 }
 
