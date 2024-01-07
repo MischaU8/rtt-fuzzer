@@ -132,7 +132,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         // console.log(active, action, args)
         replay.push(active + "\t" + action + "\t" + JSON.stringify(args))
         try {
-            state = RULES.action(state, active, action, JSON.stringify(args))
+            state = RULES.action(state, active, action, args)
         } catch (e) {
             log_crash(replay, state, view, step, active, action, args)
             throw new RulesCrashError(e, e.stack)
