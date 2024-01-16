@@ -118,6 +118,7 @@ module.exports.fuzz = function(fuzzerInputData) {
 
         let action = data.pickValue(Object.keys(actions))
         let args = actions[action]
+        let seed = state.seed
 
         if (args !== undefined && args !== null && typeof args !== "number" && typeof args !== "boolean") {
             // check for NaN as any suggested action argument and raise an error on those
@@ -138,9 +139,15 @@ module.exports.fuzz = function(fuzzerInputData) {
             throw new RulesCrashError(e, e.stack)
         }
 
-        if (action === "undo" && state.active !== active) {
-            log_crash(replay, state, view, step, active)
-            throw new UndoActiveError(`undo caused active to switch from ${active} to ${state.active}`)
+        if (action === "undo") {
+            if (state.active !== active) {
+                log_crash(replay, state, view, step, active)
+                throw new UndoActiveError(`undo caused active to switch from ${active} to ${state.active}`)
+            }
+            if (state.seed !== seed) {
+                log_crash(replay, state, view, step, active)
+                throw new UndoSeedError(`undo caused seed change from ${seed} to ${state.seed}`)
+            }
         }
         step += 1
     }
@@ -195,6 +202,13 @@ class UndoActiveError extends Error {
     constructor(message) {
       super(message)
       this.name = "UndoActiveError"
+    }
+}
+
+class UndoSeedError extends Error {
+    constructor(message) {
+      super(message)
+      this.name = "UndoSeedError"
     }
 }
 
