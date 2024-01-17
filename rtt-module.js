@@ -140,7 +140,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (action === "undo") {
-            if (state.active !== active) {
+            if (state.active !== active && state.active !== "Both") {
                 log_crash(replay, state, view, step, active)
                 throw new UndoActiveError(`undo caused active to switch from ${active} to ${state.active}`)
             }
@@ -160,9 +160,9 @@ function log_crash(replay, state, view, step, active, action=undefined, args=und
     console.log("VIEW", view)
     console.log("SETUP", replay[0].split("\t")[2])
     if (action !== undefined) {
-        console.log(`STEP=${step} ACTIVE=${active} ACTION: ${action} ` + JSON.stringify(args))
+        console.log(`STEP=${step} ACTIVE=${active} STATE=${state?.state} ACTION: ${action} ` + JSON.stringify(args))
     } else {
-        console.log(`STEP=${step} ACTIVE=${active}`)
+        console.log(`STEP=${step} ACTIVE=${active} STATE=${state?.state}`)
     }
     // console.log("STATE & REPLAY dumped to 'crash-state.json' and 'crash-replay.txt'")
     fs.writeFileSync("crash-state.json", JSON.stringify(state))
