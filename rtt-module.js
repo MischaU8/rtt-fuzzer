@@ -149,6 +149,16 @@ module.exports.fuzz = function(fuzzerInputData) {
                 throw new UndoSeedError(`undo caused seed change from ${seed} to ${state.seed}`)
             }
         }
+
+        if (RULES.assertState) {
+            try {
+                RULES.assertState(state)
+            } catch (e) {
+                log_crash(replay, state, view, step, active, action, args)
+                throw new RulesCrashError(e, e.stack)
+            }
+        }
+
         step += 1
     }
 }
