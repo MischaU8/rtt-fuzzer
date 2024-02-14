@@ -150,9 +150,9 @@ module.exports.fuzz = function(fuzzerInputData) {
             }
         }
 
-        if (RULES.assertState) {
+        if (RULES.assert_state) {
             try {
-                RULES.assertState(state)
+                RULES.assert_state(state)
             } catch (e) {
                 log_crash(replay, state, view, step, active, action, args)
                 throw new RulesCrashError(e, e.stack)
