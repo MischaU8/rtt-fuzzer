@@ -7,11 +7,12 @@ const fs = require("fs")
 const { FuzzedDataProvider } = require("@jazzer.js/core")
 
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
+const NO_CRASH = process.env.NO_CRASH === 'true'
 const NO_UNDO = process.env.NO_UNDO === 'true'
 const NO_SCHEMA = process.env.NO_SCHEMA === 'true'
 const MAX_STEPS = parseInt(process.env.MAX_STEPS || 0)
 
-console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}'`)
+// console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}'`)
 if (!fs.existsSync(RULES_JS_FILE)) {
     throw Error("rules.js not found, specify via RTT_RULES environment variable.")
 }
@@ -73,19 +74,15 @@ module.exports.fuzz = function(fuzzerInputData) {
         try {
             ctx.view = RULES.view(ctx.state, ctx.active)
         } catch (e) {
-            log_crash(ctx)
-            throw new RulesCrashError(e, e.stack)
+            return log_crash(new RulesCrashError(e, e.stack), ctx)
         }
 
         if (MAX_STEPS > 0 && ctx.step > MAX_STEPS) {
-            log_crash(ctx)
-            throw new MaxStepError("MAX_STEPS reached")
+            return log_crash(new MaxStepError("MAX_STEPS reached"), ctx)
         }
 
         if (rules_view_schema && !rules_view_schema(ctx.view)) {
-            log_crash(ctx)
-            console.log(rules_view_schema.errors)
-            throw new SchemaValidationError("View data fails schema validation")
+            return log_crash(new SchemaValidationError("View data fails schema validation: " + rules_view_schema.errors), ctx)
         }
 
         if (ctx.state.state === 'game_over') {
@@ -93,13 +90,11 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (ctx.view.prompt && ctx.view.prompt.startsWith("Unknown state:")) {
-            log_crash(ctx)
-            throw new UnknownStateError(ctx.view.prompt)
+            return log_crash(new UnknownStateError(ctx.view.prompt), ctx)
         }
 
         if (!ctx.view.actions) {
-            log_crash(ctx)
-            throw new NoMoreActionsError("No actions defined")
+            return log_crash(new NoMoreActionsError("No actions defined"), ctx)
         }
 
         const actions = ctx.view.actions
@@ -117,8 +112,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (Object.keys(actions).length === 0) {
-            log_crash(ctx)
-            throw new NoMoreActionsError("No more actions to take (besides undo)")
+            return log_crash(new NoMoreActionsError(), ctx)
         }
 
         const action = data.pickValue(Object.keys(actions))
@@ -129,8 +123,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             // check for NaN as any suggested action argument and raise an error on those
             for (const arg of args) {
                 if (isNaN(arg)) {
-                    log_crash(ctx)
-                    throw new InvalidActionArgument(`Action '${action}' argument has NaN value`)
+                    return log_crash(new InvalidActionArgument(`Action '${action}' argument has NaN value`), ctx)
                 }
             }
             args = data.pickValue(args)
@@ -143,18 +136,15 @@ module.exports.fuzz = function(fuzzerInputData) {
         try {
             ctx.state = RULES.action(ctx.state, ctx.active, action, args)
         } catch (e) {
-            log_crash(ctx, action, args)
-            throw new RulesCrashError(e, e.stack)
+            return log_crash(new RulesCrashError(e, e.stack), ctx, action, args)
         }
 
         if (action === "undo") {
             if (ctx.state.active !== ctx.active && ctx.state.active !== "Both") {
-                log_crash(ctx, action, args)
-                throw new UndoActiveError(`undo caused active to switch from ${ctx.active} to ${ctx.state.active}`)
+                return log_crash(new UndoActiveError(`undo caused active to switch from ${ctx.active} to ${ctx.state.active}`), ctx, action, args)
             }
             if (ctx.state.seed !== prev_seed) {
-                log_crash(ctx, action, args)
-                throw new UndoSeedError(`undo caused seed change from ${prev_seed} to ${ctx.state.seed}`)
+                return log_crash(new UndoSeedError(`undo caused seed change from ${prev_seed} to ${ctx.state.seed}`), ctx, action, args)
             }
         }
 
@@ -162,8 +152,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             try {
                 RULES.assert_state(ctx.state)
             } catch (e) {
-                log_crash(ctx, action, args)
-                throw new RulesCrashError(e, e.stack)
+                return log_crash(new RulesAssertError(e, e.stack), ctx, action, args)
             }
         }
 
@@ -172,17 +161,17 @@ module.exports.fuzz = function(fuzzerInputData) {
 }
 
 
-function log_crash(ctx, action=undefined, args=undefined) {
-    console.log()
-    console.log("VIEW", ctx.view)
-    console.log("SETUP", JSON.stringify(ctx.replay[0][2]))
-    let line = `STEP=${ctx.step} ACTIVE=${ctx.active} STATE=${ctx.state?.state}`
+function log_crash(error, ctx, action=undefined, args=undefined) {
+    // console.log()
+    // console.log("VIEW", ctx.view)
+    let line = `ERROR=${error.name}`
+    line += " SETUP=" + JSON.stringify(ctx.replay[0][2])
+    line += ` STEP=${ctx.step} ACTIVE=${ctx.active} STATE=${ctx.state?.state}`
     if (action !== undefined) {
         line += ` ACTION=${action}`
         if (args !== undefined)
-            line += " " + JSON.stringify(args)
+            line += " ARGS=" + JSON.stringify(args)
     }
-    console.log(line)
     const game = {
         setup: {
             scenario: ctx.scenario,
@@ -193,12 +182,21 @@ function log_crash(ctx, action=undefined, args=undefined) {
         state: ctx.state,
         replay: ctx.replay,
     }
+
     const shasum = crypto.createHash('sha1')
     shasum.update(ctx.data)
     const hash = shasum.digest('hex')
+
     const out_file = `crash-${hash}.json`
+    line += ` DUMP=${out_file}`
     fs.writeFileSync(out_file, JSON.stringify(game))
-    console.log("DUMP", out_file)
+
+    if (error.message)
+        line += " MSG=" + JSON.stringify(error.message.replace(/^Error: /, ''))
+
+    console.log(line)
+    if (!NO_CRASH)
+        throw error
 }
 
 // Custom Error classes, allowing us to ignore expected errors with -x
@@ -248,6 +246,14 @@ class RulesCrashError extends Error {
     constructor(message, stack) {
       super(message)
       this.name = "RulesCrashError";
+      this.stack = stack
+    }
+}
+
+class RulesAssertError extends Error {
+    constructor(message, stack) {
+      super(message)
+      this.name = "RulesAssertError";
       this.stack = stack
     }
 }
