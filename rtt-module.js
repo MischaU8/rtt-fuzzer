@@ -176,7 +176,7 @@ function log_crash(error, ctx, action=undefined, args=undefined) {
         setup: {
             scenario: ctx.scenario,
             player_count: ctx.player_count,
-            options: ctx.option,
+            options: ctx.options,
         },
         players: ctx.players,
         state: ctx.state,
