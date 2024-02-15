@@ -23,14 +23,14 @@ if (!NO_SCHEMA && RULES.VIEW_SCHEMA) {
 }
 
 module.exports.fuzz = function(fuzzerInputData) {
-    let data = new FuzzedDataProvider(fuzzerInputData)
+    const data = new FuzzedDataProvider(fuzzerInputData)
     if (data.remainingBytes < 16) {
         // insufficient bytes to start
         return
     }
-    let seed = data.consumeIntegralInRange(1, 2**35-31)
-    let scenarios = Array.isArray(RULES.scenarios) ? RULES.scenarios : Object.values(RULES.scenarios).flat()
-    let scenario = data.pickValue(scenarios)
+    const seed = data.consumeIntegralInRange(1, 2**35-31)
+    const scenarios = Array.isArray(RULES.scenarios) ? RULES.scenarios : Object.values(RULES.scenarios).flat()
+    const scenario = data.pickValue(scenarios)
     // if (scenario.startsWith("Random"))
     //     return
 
@@ -38,12 +38,16 @@ module.exports.fuzz = function(fuzzerInputData) {
     const options = {}
 
     let replay = []
-    let game_setup = [
+    let setup = {
+        scenario,
+        player_count: RULES.roles.length,
+        options
+    }
+    replay.push([null, ".setup", [
         seed,
         scenario,
         options
-    ]
-    replay.push("\t.setup\t" + JSON.stringify(game_setup))
+    ]])
     let state = RULES.setup(seed, scenario, options)
 
     let step = 0
@@ -68,17 +72,17 @@ module.exports.fuzz = function(fuzzerInputData) {
         try {
             view = RULES.view(state, active)
         } catch (e) {
-            log_crash(replay, state, view, step, active)
+            log_crash(setup, replay, state, view, step, active)
             throw new RulesCrashError(e, e.stack)
         }
 
         if (MAX_STEPS > 0 && step > MAX_STEPS) {
-            log_crash(replay, state, view, step, active)
+            log_crash(setup, replay, state, view, step, active)
             throw new MaxStepError("MAX_STEPS reached")
         }
 
         if (rules_view_schema && !rules_view_schema(view)) {
-            log_crash(replay, state, view, step, active)
+            log_crash(setup, replay, state, view, step, active)
             console.log(rules_view_schema.errors)
             throw new SchemaValidationError("View data fails schema validation")
         }
@@ -88,16 +92,16 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (view.prompt && view.prompt.startsWith("Unknown state:")) {
-            log_crash(replay, state, view, step, active)
+            log_crash(setup, replay, state, view, step, active)
             throw new UnknownStateError(view.prompt)
         }
 
         if (!view.actions) {
-            log_crash(replay, state, view, step, active)
+            log_crash(setup, replay, state, view, step, active)
             throw new NoMoreActionsError("No actions defined")
         }
 
-        let actions = view.actions
+        const actions = view.actions
         if (NO_UNDO && 'undo' in actions) {
             // remove `undo` from actions, useful to test for dead-ends
             delete actions['undo']
@@ -112,41 +116,44 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (Object.keys(actions).length === 0) {
-            log_crash(replay, state, view, step, active)
+            log_crash(setup, replay, state, view, step, active)
             throw new NoMoreActionsError("No more actions to take (besides undo)")
         }
 
-        let action = data.pickValue(Object.keys(actions))
+        const action = data.pickValue(Object.keys(actions))
         let args = actions[action]
-        let seed = state.seed
+        const prev_seed = state.seed
 
-        if (args !== undefined && args !== null && typeof args !== "number" && typeof args !== "boolean") {
+        if (Array.isArray(args)) {
             // check for NaN as any suggested action argument and raise an error on those
-            for (const arg in args) {
+            for (const arg of args) {
                 if (isNaN(arg)) {
-                    log_crash(replay, state, view, step, active)
+                    log_crash(setup, replay, state, view, step, active)
                     throw new InvalidActionArgument(`Action '${action}' argument has NaN value`)
                 }
             }
             args = data.pickValue(args)
+            replay.push([active, action, args])
+        } else {
+            args = undefined
+            replay.push([active, action])
         }
         // console.log(active, action, args)
-        replay.push(active + "\t" + action + "\t" + JSON.stringify(args))
         try {
             state = RULES.action(state, active, action, args)
         } catch (e) {
-            log_crash(replay, state, view, step, active, action, args)
+            log_crash(setup, replay, state, view, step, active, action, args)
             throw new RulesCrashError(e, e.stack)
         }
 
         if (action === "undo") {
             if (state.active !== active && state.active !== "Both") {
-                log_crash(replay, state, view, step, active)
+                log_crash(setup, replay, state, view, step, active, action, args)
                 throw new UndoActiveError(`undo caused active to switch from ${active} to ${state.active}`)
             }
-            if (state.seed !== seed) {
-                log_crash(replay, state, view, step, active)
-                throw new UndoSeedError(`undo caused seed change from ${seed} to ${state.seed}`)
+            if (state.seed !== prev_seed) {
+                log_crash(setup, replay, state, view, step, active, action, args)
+                throw new UndoSeedError(`undo caused seed change from ${prev_seed} to ${state.seed}`)
             }
         }
 
@@ -154,7 +161,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             try {
                 RULES.assert_state(state)
             } catch (e) {
-                log_crash(replay, state, view, step, active, action, args)
+                log_crash(setup, replay, state, view, step, active, action, args)
                 throw new RulesCrashError(e, e.stack)
             }
         }
@@ -164,19 +171,24 @@ module.exports.fuzz = function(fuzzerInputData) {
 }
 
 
-function log_crash(replay, state, view, step, active, action=undefined, args=undefined) {
+function log_crash(setup, replay, state, view, step, active, action=undefined, args=undefined) {
     console.log()
-    // console.log("STATE", state)
     console.log("VIEW", view)
-    console.log("SETUP", replay[0].split("\t")[2])
+    console.log("SETUP", replay[0][2])
+    let line = `STEP=${step} ACTIVE=${active} STATE=${state?.state}`
     if (action !== undefined) {
-        console.log(`STEP=${step} ACTIVE=${active} STATE=${state?.state} ACTION: ${action} ` + JSON.stringify(args))
-    } else {
-        console.log(`STEP=${step} ACTIVE=${active} STATE=${state?.state}`)
+        line += ` ACTION=${action}`
+        if (args !== undefined)
+            line += " " + JSON.stringify(args)
     }
-    // console.log("STATE & REPLAY dumped to 'crash-state.json' and 'crash-replay.txt'")
-    fs.writeFileSync("crash-state.json", JSON.stringify(state))
-    fs.writeFileSync("crash-replay.tsv", replay.join("\n") + "\n")
+    console.log(line)
+    const game = {
+        setup,
+        players: RULES.roles.map(r => ({role: r, name: "rtt-fuzzer"})),
+        state,
+        replay,
+    }
+    fs.writeFileSync("crash-game.json", JSON.stringify(game))
 }
 
 // Custom Error classes, allowing us to ignore expected errors with -x

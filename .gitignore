@@ -5,7 +5,7 @@ node_modules/
 package-lock.json
 
 crash-*
-crash-state.json
+crash-game.json
 mem-*
 slow-unit-*
 timeout-*
