@@ -2,6 +2,7 @@
 
 const Ajv = require("ajv")
 const ajv = new Ajv({allowUnionTypes: true})
+const crypto = require('crypto')
 const fs = require("fs")
 const { FuzzedDataProvider } = require("@jazzer.js/core")
 
@@ -37,71 +38,71 @@ module.exports.fuzz = function(fuzzerInputData) {
     // TODO randomize options
     const options = {}
 
-    let replay = []
-    let setup = {
-        scenario,
+    const ctx = {
+        data: fuzzerInputData,
         player_count: RULES.roles.length,
-        options
-    }
-    replay.push([null, ".setup", [
-        seed,
+        players: RULES.roles.map(r => ({role: r, name: "rtt-fuzzer"})),
         scenario,
-        options
-    ]])
-    let state = RULES.setup(seed, scenario, options)
+        options,
+        replay: [],
+        state: {},
+        active: null,
+        step: 0,
+    }
+    ctx.replay.push([null, ".setup", [seed, scenario, options]])
+    ctx.state = RULES.setup(seed, scenario, options)
 
-    let step = 0
     while (true) {
         if (data.remainingBytes < 16) {
             // insufficient bytes to continue
             return
         }
 
-        if (MAX_STEPS < 0 && step > -MAX_STEPS) {
+        if (MAX_STEPS < 0 && ctx.step > -MAX_STEPS) {
             // Skip & ignore if we reach the limit
             return
         }
 
-        let active = state.active
-        if (active === 'Both' || active === 'All') {
+        ctx.active = ctx.state.active
+        if (ctx.active === 'Both' || ctx.active === 'All') {
             // If multiple players can act, we'll pick a random player to go first.
-            active = data.pickValue(RULES.roles)
+            ctx.active = data.pickValue(RULES.roles)
         }
 
-        let view = {}
+        ctx.view = {}
         try {
-            view = RULES.view(state, active)
+            ctx.view = RULES.view(ctx.state, ctx.active)
         } catch (e) {
-            log_crash(setup, replay, state, view, step, active)
+            log_crash(ctx)
             throw new RulesCrashError(e, e.stack)
         }
 
-        if (MAX_STEPS > 0 && step > MAX_STEPS) {
-            log_crash(setup, replay, state, view, step, active)
+        if (MAX_STEPS > 0 && ctx.step > MAX_STEPS) {
+            log_crash(ctx)
             throw new MaxStepError("MAX_STEPS reached")
         }
 
-        if (rules_view_schema && !rules_view_schema(view)) {
-            log_crash(setup, replay, state, view, step, active)
+        if (rules_view_schema && !rules_view_schema(ctx.view)) {
+            log_crash(ctx)
             console.log(rules_view_schema.errors)
             throw new SchemaValidationError("View data fails schema validation")
         }
 
-        if (state.state === 'game_over') {
+        if (ctx.state.state === 'game_over') {
             break
         }
 
-        if (view.prompt && view.prompt.startsWith("Unknown state:")) {
-            log_crash(setup, replay, state, view, step, active)
-            throw new UnknownStateError(view.prompt)
+        if (ctx.view.prompt && ctx.view.prompt.startsWith("Unknown state:")) {
+            log_crash(ctx)
+            throw new UnknownStateError(ctx.view.prompt)
         }
 
-        if (!view.actions) {
-            log_crash(setup, replay, state, view, step, active)
+        if (!ctx.view.actions) {
+            log_crash(ctx)
             throw new NoMoreActionsError("No actions defined")
         }
 
-        const actions = view.actions
+        const actions = ctx.view.actions
         if (NO_UNDO && 'undo' in actions) {
             // remove `undo` from actions, useful to test for dead-ends
             delete actions['undo']
@@ -116,66 +117,66 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (Object.keys(actions).length === 0) {
-            log_crash(setup, replay, state, view, step, active)
+            log_crash(ctx)
             throw new NoMoreActionsError("No more actions to take (besides undo)")
         }
 
         const action = data.pickValue(Object.keys(actions))
         let args = actions[action]
-        const prev_seed = state.seed
+        const prev_seed = ctx.state.seed
 
         if (Array.isArray(args)) {
             // check for NaN as any suggested action argument and raise an error on those
             for (const arg of args) {
                 if (isNaN(arg)) {
-                    log_crash(setup, replay, state, view, step, active)
+                    log_crash(ctx)
                     throw new InvalidActionArgument(`Action '${action}' argument has NaN value`)
                 }
             }
             args = data.pickValue(args)
-            replay.push([active, action, args])
+            ctx.replay.push([ctx.active, action, args])
         } else {
             args = undefined
-            replay.push([active, action])
+            ctx.replay.push([ctx.active, action])
         }
         // console.log(active, action, args)
         try {
-            state = RULES.action(state, active, action, args)
+            ctx.state = RULES.action(ctx.state, ctx.active, action, args)
         } catch (e) {
-            log_crash(setup, replay, state, view, step, active, action, args)
+            log_crash(ctx, action, args)
             throw new RulesCrashError(e, e.stack)
         }
 
         if (action === "undo") {
-            if (state.active !== active && state.active !== "Both") {
-                log_crash(setup, replay, state, view, step, active, action, args)
-                throw new UndoActiveError(`undo caused active to switch from ${active} to ${state.active}`)
+            if (ctx.state.active !== ctx.active && ctx.state.active !== "Both") {
+                log_crash(ctx, action, args)
+                throw new UndoActiveError(`undo caused active to switch from ${ctx.active} to ${ctx.state.active}`)
             }
-            if (state.seed !== prev_seed) {
-                log_crash(setup, replay, state, view, step, active, action, args)
-                throw new UndoSeedError(`undo caused seed change from ${prev_seed} to ${state.seed}`)
+            if (ctx.state.seed !== prev_seed) {
+                log_crash(ctx, action, args)
+                throw new UndoSeedError(`undo caused seed change from ${prev_seed} to ${ctx.state.seed}`)
             }
         }
 
         if (RULES.assert_state) {
             try {
-                RULES.assert_state(state)
+                RULES.assert_state(ctx.state)
             } catch (e) {
-                log_crash(setup, replay, state, view, step, active, action, args)
+                log_crash(ctx, action, args)
                 throw new RulesCrashError(e, e.stack)
             }
         }
 
-        step += 1
+        ctx.step += 1
     }
 }
 
 
-function log_crash(setup, replay, state, view, step, active, action=undefined, args=undefined) {
+function log_crash(ctx, action=undefined, args=undefined) {
     console.log()
-    console.log("VIEW", view)
-    console.log("SETUP", replay[0][2])
-    let line = `STEP=${step} ACTIVE=${active} STATE=${state?.state}`
+    console.log("VIEW", ctx.view)
+    console.log("SETUP", JSON.stringify(ctx.replay[0][2]))
+    let line = `STEP=${ctx.step} ACTIVE=${ctx.active} STATE=${ctx.state?.state}`
     if (action !== undefined) {
         line += ` ACTION=${action}`
         if (args !== undefined)
@@ -183,12 +184,21 @@ function log_crash(setup, replay, state, view, step, active, action=undefined, a
     }
     console.log(line)
     const game = {
-        setup,
-        players: RULES.roles.map(r => ({role: r, name: "rtt-fuzzer"})),
-        state,
-        replay,
+        setup: {
+            scenario: ctx.scenario,
+            player_count: ctx.player_count,
+            options: ctx.option,
+        },
+        players: ctx.players,
+        state: ctx.state,
+        replay: ctx.replay,
     }
-    fs.writeFileSync("crash-game.json", JSON.stringify(game))
+    const shasum = crypto.createHash('sha1')
+    shasum.update(ctx.data)
+    const hash = shasum.digest('hex')
+    const out_file = `crash-${hash}.json`
+    fs.writeFileSync(out_file, JSON.stringify(game))
+    console.log("DUMP", out_file)
 }
 
 // Custom Error classes, allowing us to ignore expected errors with -x
