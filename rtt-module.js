@@ -7,12 +7,14 @@ const fs = require("fs")
 const { FuzzedDataProvider } = require("@jazzer.js/core")
 
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
+const NO_ASSERT = process.env.NO_ASSERT === 'true'
 const NO_CRASH = process.env.NO_CRASH === 'true'
-const NO_UNDO = process.env.NO_UNDO === 'true'
 const NO_SCHEMA = process.env.NO_SCHEMA === 'true'
-const MAX_STEPS = parseInt(process.env.MAX_STEPS || 0)
+const NO_UNDO = process.env.NO_UNDO === 'true'
+const MAX_STEPS = parseInt(process.env.MAX_STEPS || 10000)
+const TIMEOUT = parseInt(process.env.TIMEOUT || 250)
 
-// console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}'`)
+console.log(`Loading rtt-fuzzer RTT_RULES='${RULES_JS_FILE}'`)
 if (!fs.existsSync(RULES_JS_FILE)) {
     throw Error("rules.js not found, specify via RTT_RULES environment variable.")
 }
@@ -35,6 +37,7 @@ module.exports.fuzz = function(fuzzerInputData) {
     const scenario = data.pickValue(scenarios)
     // if (scenario.startsWith("Random"))
     //     return
+    const timeout = TIMEOUT ? Date.now() + TIMEOUT : 0
 
     // TODO randomize options
     const options = {}
@@ -78,7 +81,11 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (MAX_STEPS > 0 && ctx.step > MAX_STEPS) {
-            return log_crash(new MaxStepError("MAX_STEPS reached"), ctx)
+            return log_crash(new MaxStepError(`MAX_STEPS ${MAX_STEPS} reached`), ctx)
+        }
+
+        if (TIMEOUT && (Date.now() > timeout)) {
+            return log_crash(new TimeoutError(`TIMEOUT (${TIMEOUT}) reached`), ctx)
         }
 
         if (rules_view_schema && !rules_view_schema(ctx.view)) {
@@ -148,7 +155,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             }
         }
 
-        if (RULES.assert_state) {
+        if (!NO_ASSERT && RULES.assert_state) {
             try {
                 RULES.assert_state(ctx.state)
             } catch (e) {
@@ -262,5 +269,12 @@ class SchemaValidationError extends Error {
     constructor(message) {
       super(message)
       this.name = "SchemaValidationError"
+    }
+}
+
+class TimeoutError extends Error {
+    constructor(message) {
+      super(message)
+      this.name = "TimeoutError"
     }
 }
