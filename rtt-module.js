@@ -172,7 +172,6 @@ function log_crash(error, ctx, action=undefined, args=undefined) {
     // console.log()
     // console.log("VIEW", ctx.view)
     let line = `ERROR=${error.name}`
-    line += " SETUP=" + JSON.stringify(ctx.replay[0][2])
     line += ` STEP=${ctx.step} ACTIVE=${ctx.active} STATE=${ctx.state?.state}`
     if (action !== undefined) {
         line += ` ACTION=${action}`
@@ -190,20 +189,30 @@ function log_crash(error, ctx, action=undefined, args=undefined) {
         replay: ctx.replay,
     }
 
-    const shasum = crypto.createHash('sha1')
-    shasum.update(ctx.data)
-    const hash = shasum.digest('hex')
+    const data_checksum = crypto.createHash('sha1')
+    data_checksum.update(ctx.data)
+    const data_hash = data_checksum.digest('hex')
 
-    const out_file = `crash-${hash}.json`
-    line += ` DUMP=${out_file}`
-    fs.writeFileSync(out_file, JSON.stringify(game))
+    const game_checksum = crypto.createHash('sha1')
+    game_checksum.update(JSON.stringify(game))
+    const game_hash = game_checksum.digest('hex')
 
+    const crash_file = `crash-${data_hash}`
+    const out_file = `crash-${game_hash}.json`
+    line += " SETUP=" + JSON.stringify(ctx.replay[0][2])
+    line += ` DATA=${data_hash} DUMP=${out_file}`
     if (error.message)
         line += " MSG=" + JSON.stringify(error.message.replace(/^Error: /, ''))
 
-    console.log(line)
-    if (!NO_CRASH)
+    if (!fs.existsSync(out_file)) {
+        fs.writeFileSync(out_file, JSON.stringify(game))
+        console.log(line)
+        if (NO_CRASH)
+            fs.writeFileSync(crash_file, ctx.data)
+    }
+    if (!NO_CRASH) {
         throw error
+    }
 }
 
 // Custom Error classes, allowing us to ignore expected errors with -x
