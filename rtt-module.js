@@ -205,10 +205,12 @@ function log_crash(error, ctx, action=undefined, args=undefined) {
         line += " MSG=" + JSON.stringify(error.message.replace(/^Error: /, ''))
 
     if (!fs.existsSync(out_file)) {
-        fs.writeFileSync(out_file, JSON.stringify(game))
         console.log(line)
+        fs.writeFileSync(out_file, JSON.stringify(game))
         if (NO_CRASH)
             fs.writeFileSync(crash_file, ctx.data)
+    } else if (!NO_CRASH) {
+        console.log(line)
     }
     if (!NO_CRASH) {
         throw error
