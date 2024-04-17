@@ -73,6 +73,8 @@ module.exports.fuzz = function(fuzzerInputData) {
             ctx.active = data.pickValue(RULES.roles)
         }
 
+        const state_freeze = JSON.stringify(ctx.state)
+
         ctx.view = {}
         try {
             ctx.view = RULES.view(ctx.state, ctx.active)
@@ -90,6 +92,17 @@ module.exports.fuzz = function(fuzzerInputData) {
 
         if (rules_view_schema && !rules_view_schema(ctx.view)) {
             return log_crash(new SchemaValidationError("View data fails schema validation: " + rules_view_schema.errors), ctx)
+        }
+
+        if (state_freeze !== JSON.stringify(ctx.state)) {
+            let stack
+            try {
+                RULES.view(deep_freeze(ctx.state), ctx.active)
+            } catch (e) {
+                stack = e.stack
+            }
+            let diff_keys = object_keypaths(deep_compare(JSON.parse(state_freeze), ctx.state))
+            return log_crash(new ViewStateMutationError("View mutated state: " + diff_keys.join(", "), stack), ctx)
         }
 
         if (ctx.state.state === 'game_over') {
@@ -203,6 +216,10 @@ function log_crash(error, ctx, action=undefined, args=undefined) {
     line += ` DATA=${data_hash} DUMP=${out_file}`
     if (error.message)
         line += " MSG=" + JSON.stringify(error.message.replace(/^Error: /, ''))
+    if (error.stack) {
+        const regex = /\/Users\/\w+\/Projects\/rtt\//gi
+        line += " STACK=" + JSON.stringify(error.stack.replace(regex, ''))
+    }
 
     if (!fs.existsSync(out_file)) {
         console.log(line)
@@ -216,6 +233,49 @@ function log_crash(error, ctx, action=undefined, args=undefined) {
         throw error
     }
 }
+
+function deep_freeze(object) {
+    // Retrieve the property names defined on object
+    const propNames = Reflect.ownKeys(object);
+    // Freeze properties before freezing self
+    for (const name of propNames) {
+      const value = object[name];
+      if ((value && typeof value === "object") || typeof value === "function") {
+        deep_freeze(value);
+      }
+    }
+    return Object.freeze(object);
+}
+
+function deep_compare(obj1, obj2) {
+    let diffObj = Array.isArray(obj2) ? [] : {}
+    Object.getOwnPropertyNames(obj2).forEach(function(prop) {
+        if (typeof obj2[prop] === 'object') {
+            diffObj[prop] = deep_compare(obj1[prop], obj2[prop])
+            // if it's an array with only length property => empty array => delete
+            // or if it's an object with no own properties => delete
+            if (Array.isArray(diffObj[prop]) && Object.getOwnPropertyNames(diffObj[prop]).length === 1 || Object.getOwnPropertyNames(diffObj[prop]).length === 0) {
+                delete diffObj[prop]
+            }
+        } else if(obj1[prop] !== obj2[prop]) {
+            diffObj[prop] = obj2[prop]
+        }
+    });
+    return diffObj
+}
+
+function object_keypaths(obj, prefix='') {
+    let keys = []
+    for (const key in obj) {
+        if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+            keys = keys.concat(object_keypaths(obj[key], `${prefix}${key}.`))
+        } else {
+            keys.push(`${prefix}${key}`)
+        }
+    }
+    return keys
+}
+
 
 // Custom Error classes, allowing us to ignore expected errors with -x
 class UnknownStateError extends Error {
@@ -280,6 +340,14 @@ class SchemaValidationError extends Error {
     constructor(message) {
       super(message)
       this.name = "SchemaValidationError"
+    }
+}
+
+class ViewStateMutationError extends Error {
+    constructor(message, stack) {
+      super(message)
+      this.name = "ViewStateMutationError";
+      this.stack = stack
     }
 }
 
