@@ -12,7 +12,7 @@ with open('errors.txt', 'r') as f, open('errors.csv', 'w', newline='') as csvfil
 
     for line in f.readlines():
         line = line.strip()
-        if line.startswith("Loading"):
+        if line.startswith("Loading") or line.startswith("INFO:"):
             continue
         # print(line)
         data = {}
