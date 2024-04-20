@@ -152,7 +152,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             args = undefined
             ctx.replay.push([ctx.active, action])
         }
-        // console.log(active, action, args)
+        // console.log(ctx.state.state, ctx.active, action, args)
         try {
             ctx.state = RULES.action(ctx.state, ctx.active, action, args)
         } catch (e) {
