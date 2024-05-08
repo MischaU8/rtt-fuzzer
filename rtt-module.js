@@ -95,14 +95,12 @@ module.exports.fuzz = function(fuzzerInputData) {
         }
 
         if (state_freeze !== JSON.stringify(ctx.state)) {
-            let stack
             try {
                 RULES.view(deep_freeze(ctx.state), ctx.active)
             } catch (e) {
-                stack = e.stack
+                return log_crash(new ViewStateMutationError(e, e.stack), ctx)
             }
-            let diff_keys = object_keypaths(deep_compare(JSON.parse(state_freeze), ctx.state))
-            return log_crash(new ViewStateMutationError("View mutated state: " + diff_keys.join(", "), stack), ctx)
+            throw Error("ASSERT frozen state change should have been caught.")
         }
 
         if (ctx.state.state === 'game_over') {
@@ -246,36 +244,6 @@ function deep_freeze(object) {
     }
     return Object.freeze(object);
 }
-
-function deep_compare(obj1, obj2) {
-    let diffObj = Array.isArray(obj2) ? [] : {}
-    Object.getOwnPropertyNames(obj2).forEach(function(prop) {
-        if (typeof obj2[prop] === 'object') {
-            diffObj[prop] = deep_compare(obj1[prop], obj2[prop])
-            // if it's an array with only length property => empty array => delete
-            // or if it's an object with no own properties => delete
-            if (Array.isArray(diffObj[prop]) && Object.getOwnPropertyNames(diffObj[prop]).length === 1 || Object.getOwnPropertyNames(diffObj[prop]).length === 0) {
-                delete diffObj[prop]
-            }
-        } else if(obj1[prop] !== obj2[prop]) {
-            diffObj[prop] = obj2[prop]
-        }
-    });
-    return diffObj
-}
-
-function object_keypaths(obj, prefix='') {
-    let keys = []
-    for (const key in obj) {
-        if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
-            keys = keys.concat(object_keypaths(obj[key], `${prefix}${key}.`))
-        } else {
-            keys.push(`${prefix}${key}`)
-        }
-    }
-    return keys
-}
-
 
 // Custom Error classes, allowing us to ignore expected errors with -x
 class UnknownStateError extends Error {
