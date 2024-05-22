@@ -96,7 +96,7 @@ module.exports.fuzz = function(fuzzerInputData) {
 
         if (state_freeze !== JSON.stringify(ctx.state)) {
             try {
-                RULES.view(deep_freeze(ctx.state), ctx.active)
+                RULES.view(deep_freeze(JSON.parse(state_freeze)), ctx.active)
             } catch (e) {
                 return log_crash(new ViewStateMutationError(e, e.stack), ctx)
             }
