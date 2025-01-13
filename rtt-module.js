@@ -11,6 +11,7 @@ const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
 const NO_ASSERT = process.env.NO_ASSERT === 'true'
 const NO_CRASH = process.env.NO_CRASH === 'true'
 const NO_SCHEMA = process.env.NO_SCHEMA === 'true'
+const NO_IMMUTABLE_VIEWSTATE = process.env.NO_IMMUTABLE_VIEWSTATE === 'true'
 const NO_UNDO = process.env.NO_UNDO === 'true'
 const MAX_STEPS = parseInt(process.env.MAX_STEPS || 10000)
 const TIMEOUT = parseInt(process.env.TIMEOUT || 250)
@@ -81,7 +82,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             ctx.active = data.pickValue(roles)
         }
 
-        const state_freeze = JSON.stringify(ctx.state)
+        const state_freeze = !NO_IMMUTABLE_VIEWSTATE ? JSON.stringify(ctx.state) : {}
 
         ctx.view = {}
         try {
@@ -102,7 +103,7 @@ module.exports.fuzz = function(fuzzerInputData) {
             return log_crash(new SchemaValidationError("View data fails schema validation: " + rules_view_schema.errors), ctx)
         }
 
-        if (state_freeze !== JSON.stringify(ctx.state)) {
+        if (!NO_IMMUTABLE_VIEWSTATE && state_freeze !== JSON.stringify(ctx.state)) {
             try {
                 RULES.view(deep_freeze(JSON.parse(state_freeze)), ctx.active)
             } catch (e) {
