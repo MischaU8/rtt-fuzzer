@@ -42,10 +42,14 @@ module.exports.fuzz = function(fuzzerInputData) {
     // TODO randomize options
     const options = {}
 
+	let roles = RULES.roles
+	if (typeof roles === "function")
+		roles = roles(scenario, options)
+
     const ctx = {
         data: fuzzerInputData,
-        player_count: RULES.roles.length,
-        players: RULES.roles.map(r => ({role: r, name: "rtt-fuzzer"})),
+        player_count: roles.length,
+        players: roles.map(r => ({role: r, name: "rtt-fuzzer"})),
         scenario,
         options,
         replay: [],
@@ -70,7 +74,7 @@ module.exports.fuzz = function(fuzzerInputData) {
         ctx.active = ctx.state.active
         if (ctx.active === 'Both' || ctx.active === 'All') {
             // If multiple players can act, we'll pick a random player to go first.
-            ctx.active = data.pickValue(RULES.roles)
+            ctx.active = data.pickValue(roles)
         }
 
         const state_freeze = JSON.stringify(ctx.state)
