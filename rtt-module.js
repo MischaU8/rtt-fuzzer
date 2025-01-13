@@ -22,6 +22,8 @@ if (!fs.existsSync(RULES_JS_FILE)) {
 const RULES = require(RULES_JS_FILE)
 const TITLE_ID = path.basename(path.dirname(RULES_JS_FILE))
 
+globalThis.RTT_FUZZER = true
+
 let rules_view_schema = null
 if (!NO_SCHEMA && RULES.VIEW_SCHEMA) {
     console.log("View schema found; validating.")
