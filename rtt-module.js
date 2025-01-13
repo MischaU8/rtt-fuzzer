@@ -4,6 +4,7 @@ const Ajv = require("ajv")
 const ajv = new Ajv({allowUnionTypes: true})
 const crypto = require('crypto')
 const fs = require("fs")
+const path = require("path")
 const { FuzzedDataProvider } = require("@jazzer.js/core")
 
 const RULES_JS_FILE = process.env.RTT_RULES || "rules.js"
@@ -19,6 +20,7 @@ if (!fs.existsSync(RULES_JS_FILE)) {
     throw Error("rules.js not found, specify via RTT_RULES environment variable.")
 }
 const RULES = require(RULES_JS_FILE)
+const TITLE_ID = path.basename(path.dirname(RULES_JS_FILE))
 
 let rules_view_schema = null
 if (!NO_SCHEMA && RULES.VIEW_SCHEMA) {
@@ -195,6 +197,7 @@ function log_crash(error, ctx, action=undefined, args=undefined) {
     }
     const game = {
         setup: {
+	    title_id: TITLE_ID,
             scenario: ctx.scenario,
             player_count: ctx.player_count,
             options: ctx.options,
